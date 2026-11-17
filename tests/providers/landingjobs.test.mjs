@@ -8,7 +8,7 @@ console.log('\nProvider — landingjobs');
 try {
   const ljModule = await import(pathToFileURL(join(ROOT, 'providers/landingjobs.mjs')).href);
   const landingjobs = ljModule.default;
-  const { normalizeLandingJob, companyFromUrl } = ljModule;
+  const { normalizeLandingJob, companyFromUrl, landingSalary } = ljModule;
 
   if (landingjobs.id === 'landingjobs') pass('landingjobs.id is "landingjobs"');
   else fail(`landingjobs.id is ${JSON.stringify(landingjobs.id)}`);
@@ -43,6 +43,14 @@ try {
   const remoteJob = normalizeLandingJob({ title: 'R', url: 'https://landing.jobs/at/acme/r', locations: [{ city: 'Berlin', country_code: 'DE' }], remote: true });
   if (remoteJob?.location === 'Berlin, DE, Remote') pass('normalizeLandingJob appends "Remote" when remote is true');
   else fail(`normalizeLandingJob remote location = ${JSON.stringify(remoteJob?.location)}`);
+
+  // www subdomain and salary strings are accepted.
+  const wwwJob = normalizeLandingJob({ title: 'R2', url: 'https://www.landing.jobs/at/acme/r2', locations: [{ city: 'Paris', country_code: 'FR' }], remote: false, gross_salary_low: '52000', gross_salary_high: '70000', currency_code: 'eur' });
+  if (wwwJob?.company === 'Acme' && wwwJob?.location === 'Paris, FR' && landingSalary({ gross_salary_low: '52000', gross_salary_high: '70000', currency_code: 'eur' })?.max === 70000) {
+    pass('normalizeLandingJob accepts the www subdomain and landingSalary parses numeric string ranges');
+  } else {
+    fail(`normalizeLandingJob/www/salary = ${JSON.stringify({ wwwJob, salary: landingSalary({ gross_salary_low: '52000', gross_salary_high: '70000', currency_code: 'eur' }) })}`);
+  }
 
   // company fallback: url is landing.jobs but not /at/<slug>/ → entry name, then "Landing.jobs".
   const coEntry = normalizeLandingJob({ title: 'T', url: 'https://landing.jobs/jobs/99' }, 'Entry Name');
@@ -113,4 +121,21 @@ try {
 
 } catch (e) {
   fail(`landingjobs provider tests crashed: ${e.message}`);
+}
+
+
+const salCases = [
+  [{gross_salary_low: 50000, gross_salary_high: 67000, currency_code: 'EUR'},
+    {min: 50000, max: 67000, currency: 'EUR' }, 'a full range maps straight through']
+];
+
+const withoutSal = normalizeLandingJob({
+  title: 'Platform Engineer',
+  url: 'https://landing.jobs/at/acme/platform-engineer',
+}, 'Fallback');
+
+if (withoutSal && !('salary' in withoutSal)) {
+  pass('normalizeLandingJob omits salary entirely when the posting has none');
+} else {
+  fail(`normalizeLandingJob should omit salary, got ${JSON.stringify(withoutSal && withoutSal.salary)}`);
 }
